@@ -24,6 +24,15 @@ MCP9801_ADDR = 0x48		# On-board temperature monitor chip address (for TC cold ju
 MCP4725_ADDR = 0x67		# DAC address (for motor voltage control)
 
 
+def set_pump(pump_object, voltage):
+	dac_voltage = (5.86 - voltage)/5.11
+	dac_val = 4096 * dac_voltage/V_DD
+
+	if voltage == 0:
+		dac_val = 4095
+
+	print("Pump voltage change: " + format(voltage, '.1f') + "V, DAC: " + str(round(dac_val,0)))
+	pump_object.write(int(dac_val))
 
 
 ### File setup ----------------------------------
@@ -79,22 +88,33 @@ dpt = SDP800.DPT(SDP800_ADDR, bus)
 
 # Define variables
 V_DD = 3.3
+last_pump_on_time = 0
 last_pump_voltage = 0
 pump_voltage = 0
 
 
-#### Sequence
-
-# dac.write(1000)
-
-# Electro-chemical oxygen cell conversion class
+### Electro-chemical oxygen cell (EOC) conversion class definition and calibration
 adc1.set_resolution(18)
+adc1.set_gain(8)
 adc1.set_channel(1)			# EOC channel
 adc1.write_config()
-time.sleep(0.4)
-adc1_output = adc1.read()
 
-eoc = EOC_convert.EOC_convert(adc1_output, calibrArg)
+if calibrArg == "n":
+	eoc = EOC_convert.EOC_convert(calibrArg)
+else:
+	set_pump(dac, 5)
+	time.sleep(2.5)
+	eoc_voltage = 0.0
+	for i in range(0,5):
+		time.sleep(0.35)
+		eoc_voltage += adc1.read()
+	eoc_voltage /= 5
+
+	set_pump(dac, 0)
+
+	eoc = EOC_convert.EOC_convert(calibrArg, eoc_voltage)
+
+
 o2_multiplier = eoc.getMultiplier()
 with open(write_file + ".cfg", "w") as output:
 	output.write("o2_multiplier=" + str(format(o2_multiplier, '.5f')))
@@ -114,17 +134,10 @@ while(True):
 	# TC1_voltage = adc2.read()
 
 	if pump_voltage != last_pump_voltage:
-		dac_voltage = (5.86 - pump_voltage)/5.11
-		dac_val = 4096 * dac_voltage/V_DD
-
-		if pump_voltage == 0:
-			dac_val = 4095
-
-		print("Pump voltage change: " + format(pump_voltage, '.1f') + "V, DAC: " + str(round(dac_val,0)))
-
+		set_pump(dac, pump_voltage)
 		last_pump_voltage = pump_voltage
 
-		dac.write(dac_val)
+
 
 	cpu_temp = CPUTemperature()
 
@@ -136,7 +149,10 @@ while(True):
 	PCB_temp_raw = bus.read_i2c_block_data(MCP9801_ADDR, 0x00, 2)						# Get raw PCB temperature reading
 	PCB_temp = int.from_bytes(bytes(PCB_temp_raw), "big", signed=True) * 2**(-8)	# Convert to temperature
 
-	adc1.set_channel(1, True)				# EOC channel
+	adc1.set_channel(1)				# EOC channel
+	adc1.set_gain(8)
+	adc1.write_config()
+
 
 	TC_temps = [-99.9,-99.9,-99.9,-99.9]
 
@@ -154,8 +170,10 @@ while(True):
 			print("TEMP CALC FAILED")
 
 		if i == 1:
-			eoc_voltage = adc1.read()
-			adc1.set_channel(2, True)				# Battery voltage channel
+			eoc_voltage = adc1.read()		# Scale down since we used gain=8
+			adc1.set_channel(2)				# Battery voltage channel
+			adc1.set_gain(1)
+			adc1.write_config()
 
 
 
@@ -164,22 +182,28 @@ while(True):
 
 	# print(PCB_temp)
 
+	timedelta = datetime.now() - t_start
+	t = round(timedelta.total_seconds(), 2)
+
+
 	if TC_temps[2] > 40.0:
 		pump_voltage = 3
 	else:
-		pump_voltage = 0
+		if t-last_pump_on_time > 10:
+			pump_voltage = 4
+			last_pump_on_time = t
+		else:
+			pump_voltage = 0
 
 
 
-	timedelta = datetime.now() - t_start
-	t = round(timedelta.total_seconds(), 2)
 
 
 	print(format(t, '.2f')
 		+ ": Batt:" + str(format(batt_voltage, '.3f'))
 		+ " V --- CPU: " + str(format(cpu_temp.temperature,'.1f'))
 		+ " C --- PCB Temp:" + str(format(PCB_temp, '.1f'))
-		+ " C --- %O2: " + str(format(o2_conc, '.4f'))
+		+ " C --- %O2: " + str(round(o2_conc, 2))
 		+ " % --- Differential Pressure: " + str(format(diff_pressure, '.3f'))
 		+ " Pa --- TC1: " + str(format(TC_temps[0], '.1f'))
 		+ " C - TC2: " + str(format(TC_temps[1], '.1f'))
@@ -190,7 +214,7 @@ while(True):
 
 	### Write to file ---------------------------
 
-	tempstr = str(format(time.time(), '.2f')) + "," + str(t) + "," + str(format(pump_voltage, '.2f')) + "," + str(format(batt_voltage, '.3f')) + "," + str(format(cpu_temp.temperature,'.1f')) + "," + str(PCB_temp) + "," + str(format(o2_conc,'.4f')) + "," + str(format(diff_pressure,'.3f')) + "," + str(format(TC_temps[0],'.2f')) + "," + str(format(TC_temps[1],'.2f')) + "," + str(format(TC_temps[2],'.2f')) + "," + str(format(TC_temps[3],'.2f')) + "\n"
+	tempstr = str(format(time.time(), '.2f')) + "," + str(t) + "," + str(format(pump_voltage, '.2f')) + "," + str(format(batt_voltage, '.3f')) + "," + str(format(cpu_temp.temperature,'.1f')) + "," + str(PCB_temp) + "," + str(format(o2_conc,'.3f')) + "," + str(format(diff_pressure,'.3f')) + "," + str(format(TC_temps[0],'.2f')) + "," + str(format(TC_temps[1],'.2f')) + "," + str(format(TC_temps[2],'.2f')) + "," + str(format(TC_temps[3],'.2f')) + "\n"
 
 	with open(write_file, "a") as output:
 		output.write(tempstr)

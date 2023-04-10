@@ -9,7 +9,7 @@ class EOC_convert:
 		return o2
 
 
-	def __init__(self,voltage,calibrate,calibrationFile="settings.csv"):
+	def __init__(self,calibrate,voltage=0,calibrationFile="settings.csv"):
 		rawOutput = voltage
 
 		self.o2_mult = 0
