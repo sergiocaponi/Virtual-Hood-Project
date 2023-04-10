@@ -1,6 +1,9 @@
 import csv
 
 class EOC_convert:
+	def getMultiplier(self):
+		return self.o2_mult
+
 	def convert(self,voltage):
 		o2 = voltage*self.o2_mult
 		return o2
