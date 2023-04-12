@@ -1,5 +1,5 @@
 import pi_MCP342x as MCP342x
-import MCP4725
+import pi_MCP4725 as MCP4725
 import SDP800
 
 from sshkeyboard import listen_keyboard
