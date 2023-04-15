@@ -126,6 +126,11 @@ adc2.set_gain(8)
 adc2.write_config()
 
 
+# Load these functions into cache so it doesn't cause delays later
+temp = typeT.inverse_CmV(1, Tref=1)
+temp = typeK.inverse_CmV(1, Tref=1)
+
+input("Press enter to proceed.")
 
 t_start = datetime.now()
 
@@ -153,17 +158,18 @@ while(True):
 	adc1.set_gain(8)
 	adc1.write_config()
 
-	TC_voltages = [0.0, 0.0, 0.0, 0.0]
-	TC_temps = [-99.9,-99.9,-99.9, -99.9]
+	TC_voltages = [0.0, 0.0, 0.0]
+	TC_temps = [-99.9,-99.9,-99.9]
 
 	for i, temp in enumerate(TC_temps):
 		adc2.set_channel(i+1, True)
-		time.sleep(0.33)
-		TC_voltages[i] = adc2.read()
+		time.sleep(0.25)
 		try:
 			if i == 2:
+				TC_voltages[i] = - adc2.read()
 				TC_temps[i] = typeT.inverse_CmV(TC_voltages[i], Tref=PCB_temp)
 			else:
+				TC_voltages[i] = adc2.read()
 				TC_temps[i] = typeK.inverse_CmV(TC_voltages[i], Tref=PCB_temp)
 			# print(TC1_temp)
 		except:
@@ -208,13 +214,12 @@ while(True):
 		+ " Pa --- TC1: " + str(format(TC_temps[0], '.1f'))
 		+ " C - TC2: " + str(format(TC_temps[1], '.1f'))
 		+ " C - TC3: " + str(format(TC_temps[2], '.1f'))
-		+ " C - TC4: " + str(format(TC_temps[3], '.1f'))
 		+ " C"
 		)
 
 	### Write to file ---------------------------
 
-	tempstr = str(format(time.time(), '.2f')) + "," + str(t) + "," + str(format(pump_voltage, '.2f')) + "," + str(format(batt_voltage, '.3f')) + "," + str(format(cpu_temp.temperature,'.1f')) + "," + str(PCB_temp) + "," + str(format(o2_conc,'.3f')) + "," + str(format(diff_pressure,'.3f')) + "," + str(format(TC_temps[0],'.2f')) + "," + str(format(TC_temps[1],'.2f')) + "," + str(format(TC_temps[2],'.2f')) + "," + str(format(TC_temps[3],'.2f')) + "," + str(format(TC_voltages[1], ".2f")) + "," + str(format(TC_voltages[2], ".2f")) +  "\n"
+	tempstr = str(format(time.time(), '.2f')) + "," + str(t) + "," + str(format(pump_voltage, '.2f')) + "," + str(format(batt_voltage, '.3f')) + "," + str(format(cpu_temp.temperature,'.1f')) + "," + str(PCB_temp) + "," + str(format(o2_conc,'.3f')) + "," + str(format(diff_pressure,'.3f')) + "," + str(format(TC_temps[0],'.2f')) + "," + str(format(TC_temps[1],'.2f')) + "," + str(format(TC_temps[2],'.2f')) + "," + str(format(TC_voltages[0],'.2f')) + ","  + str(format(TC_voltages[1], ".2f")) + "," + str(format(TC_voltages[2], ".2f")) +  "\n"
 
 	with open(write_file, "a") as output:
 		output.write(tempstr)
